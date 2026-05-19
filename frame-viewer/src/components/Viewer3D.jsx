@@ -14,8 +14,11 @@ export default function Viewer3D({ data, onBack }) {
 
     const width = container.clientWidth
     const height = container.clientHeight
-    const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 100000)
-    camera.position.set(0, 0, 100)
+    const aspect = width / height
+    // Placeholder frustum; will be updated after model bounds are known
+    const camera = new THREE.OrthographicCamera(
+      -1, 1, 1 / aspect, -1 / aspect, -100000, 100000
+    )
 
     const renderer = new THREE.WebGLRenderer({ antialias: true })
     renderer.setPixelRatio(window.devicePixelRatio)
@@ -46,7 +49,7 @@ export default function Viewer3D({ data, onBack }) {
       })
       const geom = new THREE.BufferGeometry()
       geom.setAttribute('position', new THREE.BufferAttribute(positions, 3))
-      const mat = new THREE.PointsMaterial({ color: 0x00aaff, size: 3, sizeAttenuation: true })
+      const mat = new THREE.PointsMaterial({ color: 0x00aaff, size: 4, sizeAttenuation: false })
       scene.add(new THREE.Points(geom, mat))
     }
 
@@ -68,17 +71,24 @@ export default function Viewer3D({ data, onBack }) {
       }
     }
 
-    // Fit camera to model bounds
+    // Fit orthographic camera to model bounds
     const box = new THREE.Box3().setFromObject(scene)
     const size = box.getSize(new THREE.Vector3())
     const center = box.getCenter(new THREE.Vector3())
     const maxDim = Math.max(size.x, size.y, size.z, 1)
-    const fov = camera.fov * (Math.PI / 180)
-    const camDist = Math.abs(maxDim / 2 / Math.tan(fov / 2)) * 1.8
+    const halfView = maxDim * 0.7  // half-height of ortho frustum
+    const camDist = maxDim * 10    // far enough for all rotations
+    const w = container.clientWidth
+    const h = container.clientHeight
+    const asp = w / h
+    camera.left   = -halfView * asp
+    camera.right  =  halfView * asp
+    camera.top    =  halfView
+    camera.bottom = -halfView
+    camera.near   = -camDist
+    camera.far    =  camDist
     camera.position.copy(center)
-    camera.position.z += camDist
-    camera.near = camDist / 1000
-    camera.far = camDist * 100
+    camera.position.z += camDist / 2
     camera.lookAt(center)
     camera.updateProjectionMatrix()
 
@@ -108,12 +118,8 @@ export default function Viewer3D({ data, onBack }) {
     }
 
     function zoom(factor) {
-      const dir = camera.position.clone().sub(sceneCenter)
-      const dist = dir.length()
-      const newDist = Math.max(camDist * 0.01, dist * factor)
-      dir.setLength(newDist)
-      camera.position.copy(sceneCenter).add(dir)
-      camera.lookAt(sceneCenter)
+      camera.zoom = Math.max(0.01, camera.zoom * factor)
+      camera.updateProjectionMatrix()
     }
 
     // Mouse handlers
@@ -163,7 +169,11 @@ export default function Viewer3D({ data, onBack }) {
     const onResize = () => {
       const w = container.clientWidth
       const h = container.clientHeight
-      camera.aspect = w / h
+      const a = w / h
+      camera.left   = -halfView * a
+      camera.right  =  halfView * a
+      camera.top    =  halfView
+      camera.bottom = -halfView
       camera.updateProjectionMatrix()
       renderer.setSize(w, h)
     }
